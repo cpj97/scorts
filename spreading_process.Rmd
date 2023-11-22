@@ -1,0 +1,35 @@
+---
+title: "Spreading process: escorts network"
+output: html_document
+author: "William Fernandez and Camilo Pedraza"
+date: "2023-11-22"
+---
+
+```{r setup, include=FALSE}
+library(igraph)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library(kableExtra)
+library(here)
+
+
+#knitr::opts_knit$set(root.dir = "C:/Users/wfern/OneDrive - Universidad del Pacífico/Hertie School of Governance/Third Term/Applied Network Analysis/Assignment")
+  
+escorts_edges          <- read_csv("Github/scorts/network.csv/edges.csv", show_col_types = F)
+escorts_nodes          <- read_csv("Github/scorts/network.csv/nodes.csv", show_col_types = F)
+
+
+```
+
+## R Markdown
+
+
+
+```{r}
+
+
+
+
+```
+
