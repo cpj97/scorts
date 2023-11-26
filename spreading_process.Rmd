@@ -12,22 +12,303 @@ library(tidyverse)
 library(dplyr)
 library(kableExtra)
 library(here)
-
+library(RColorBrewer)
+library(ggbipart)
+library(ggraph)
+library(tidygraph)
+library(spreadr)
+library(multigraph)
+library(SimInf)
 
 #knitr::opts_knit$set(root.dir = "C:/Users/wfern/OneDrive - Universidad del Pacífico/Hertie School of Governance/Third Term/Applied Network Analysis/Assignment")
   
-escorts_edges          <- read_csv("Github/scorts/network.csv/edges.csv", show_col_types = F)
-escorts_nodes          <- read_csv("Github/scorts/network.csv/nodes.csv", show_col_types = F)
+escorts_edges          <- read_csv("network.csv/edges.csv", show_col_types = F)
+escorts_nodes          <- read_csv("network.csv/nodes.csv", show_col_types = F)
 
 
 ```
 
-## R Markdown
+## Spreading Process
+
+
+```{r}
+
+#Basic plot
+
+graph_edge                 <- graph_from_data_frame(d=escorts_edges, vertices=escorts_nodes, directed=F)
+
+V(graph_edge)$color        <- ifelse(escorts_nodes$male==1, "darkblue", "pink")
+
+V(graph_edge)$type         <- ifelse(escorts_nodes$male==1,TRUE,FALSE)
+
+subgraph_1                 <- induced.subgraph(graph_edge, 1:10000)
+
+
+plot(subgraph_1, 
+     layout=layout_with_kk(subgraph_1),
+     vertex.label=NA, 
+     vertex.color=V(graph_edge)$color,
+     vertex.size = 5,
+     edge.color = "black",
+     edge.size = 0.7)
+
+```
+##Model I: SI with a probability of infection of 1 
+```{r}
+
+#Women
+#Parameters
+beta          <- 1 
+gamma         <- 0
+
+#Number of prostitutes 
+n             <- 10106
+
+# Initial state of the population compartments
+u0            <- data.frame(S=rep(10105,n), I=rep(1,n), R=rep(0,n))
+
+#time
+tspan         <- seq(from = 1, to = 365, by = 1)
+
+model         <- SIR(u0=u0, tspan = tspan, beta = beta, gamma = gamma)
+
+set.seed(123)
+result        <- run(model=model, threads = 1)
+
+result
+plot(result, main = "SI model with p(I)=1 for prostitutes")
+plot(prevalence(result, I~S+I+R), cex=0.1, col="red", main = "Prevalence for prostitutes")
+
+
+#Men
+#Parameters
+beta          <- 1 
+gamma         <- 0
+
+#Number of prostitutes 
+n             <- 6624
+
+# Initial state of the population compartments
+u0            <- data.frame(S=rep(6623,n), I=rep(1,n), R=rep(0,n))
+
+#time
+tspan         <- seq(from = 1, to = 365, by = 1)
+
+model         <- SIR(u0=u0, tspan = tspan, beta = beta, gamma = gamma)
+
+set.seed(123)
+result        <- run(model=model, threads = 1)
+
+result
+plot(result, main = "SI model with p(I)=1 for men")
+plot(prevalence(result, I~S+I+R), cex=0.1, col="red", main = "Prevalence for men")
+
+```
+
+##Model II: SIR for males and females 
+
+```{r}
+
+#Women
+transitions  <- c("S -> b*S*I/(S+I+R) -> I", "I -> g*I -> R")
+compartments <- c("S", "I", "R")
+n            <- 10106
+u0           <- data.frame(S = rep(10101, n), I = rep(5, n), R = rep(0, n))
+model        <- mparse(transitions = transitions, compartments = compartments,
+                gdata = c(b = 0.24, g = 0.05), u0 = u0, tspan = 1:180)
+
+## Figure 6: Run the model and plot the resulting trajectory.
+set.seed(123)
+result       <- run(model = model, threads = 1)
+plot(result, main = "SIR model for prostitutes with beta=0.24")
+plot(prevalence(result, I~S+I+R), cex=0.3, col="red", main = "Prevalence for prostitutes")
+
+
+
+#Men
+transitions  <- c("S -> b*S*I/(S+I+R) -> I", "I -> g*I -> R")
+compartments <- c("S", "I", "R")
+n            <- 6624
+u0           <- data.frame(S = rep(6619, n), I = rep(5, n), R = rep(0, n))
+model        <- mparse(transitions = transitions, compartments = compartments,
+                gdata = c(b = 0.24, g = 0.05), u0 = u0, tspan = 1:180)
+
+## Figure 6: Run the model and plot the resulting trajectory.
+set.seed(123)
+result       <- run(model = model, threads = 1)
+plot(result, main = "SIR model for males with beta=0.24")
+plot(prevalence(result, I~S+I+R), cex=0.3, col="red", main = "Prevalence for men")
+
+
+
+#Men and women
+transitions  <- c("S -> b*S*I/(S+I+R) -> I", "I -> g*I -> R")
+compartments <- c("S", "I", "R")
+n            <- 16730
+u0           <- data.frame(S = rep(16725, n), I = rep(5, n), R = rep(0, n))
+model        <- mparse(transitions = transitions, compartments = compartments,
+                gdata = c(b = 0.24, g = 0.05), u0 = u0, tspan = 1:180)
+
+## Figure 6: Run the model and plot the resulting trajectory.
+set.seed(123)
+result       <- run(model = model, threads = 1)
+plot(result, main = "SIR model for the Brazilian Prostitution Network with beta=0.24")
+plot(prevalence(result, I~S+I+R), cex=0.3, col="red", main = "Prevalence in the network")
+
+
+
+
+```
+
+
+
+##Model IV: SEIRD 
+
+```{r}
+
+n       <- 16730
+
+
+u0_data <- data.frame(S=rep(16728,n), E=rep(1,n), I=rep(1,n), R=rep(0,n), D=rep(0,n))
+model   <- mparse(transitions = c("S -> alpha*S -> E",
+                                  "E -> tau*E -> I",
+                                  "I -> beta*S*I/(S+I+R) -> R",
+                                  "I -> teta*I -> D",
+                                  "R -> gamma*R -> S"),
+                 compartments = c("S", "E", "I", "R", "D"),
+                 gdata = c(alpha = 0.01, tau= 0.24, beta = 0.05, gamma = 0.005, teta = 0.0001),
+                 u0 = u0_data,
+                 tspan = 1:365)
+
+set.seed(1234)
+result <- run(model=model, threads = 1)
+result
+plot(result, main = "SEIRD Model Applied to the Brazilian Prostitution Network")
+
+plot(prevalence(result, I~.), cex=0.3, col="red", main = "Prevalence for men and women")
+
+SEIRD_df     <- trajectory(model = result) %>%
+                filter(time==365) %>%
+                summarize(mean_S = mean(S),
+                       mean_E = mean(E),
+                       mean_I = mean(I),
+                       mean_R = mean(R),
+                       mean_D = mean(D))
+
+```
+
+
+
+
+##Model with entries
+```{r}
+
+u0     <- data.frame(S = rep(0, 5), I = rep(0, 5), R = rep(0, 5))
+
+add    <- data.frame(event = "enter", time = rep(1:10, each = 5),
+                  node = 1:5, dest = 0, n = 1:5, proportion = 0,
+                  select = 1, shift = 0)
+
+infect <- data.frame(event = "enter", time = 25, node = 5,
+                     dest = 0, n = 1, proportion = 0, 
+                     select = 2, shift = 0)
+
+move   <- data.frame(event = "extTrans", time = 35:45,
+                   node = c(5, 5, 5, 5, 4, 4, 4, 3, 3, 2, 1),
+                   dest = c(4, 3, 3, 1, 3, 2, 1, 2, 1, 1, 2), n = 5, proportion = 0, 
+                   select = 4, shift = 0)
+
+remove <- data.frame(event = "exit", time = c(70, 110), node = rep(1:5, each = 2), 
+                     dest = 0, n = 0, proportion = 0.2, select = 4, shift = 0)
+
+## Combine all events and create model
+events <-  rbind(add, infect, move, remove)
+model  <-  SIR(u0 = u0, tspan = 1:180, events = events, beta = 0.16, gamma = 0.077)
+
+## Figure 4 left: Run trajectory and plot result
+set.seed(3)
+result <- run(model, threads = 1)
+plot(result, range = FALSE)
+
+
+```
+```{r}
+# Example 2 Giving te equations (transitions)
+
+transitions  <- c("S -> b*S*I/(S+I+R) -> I", "I -> g*I -> R")
+compartments <- c("S", "I", "R")
+n            <- 1000
+u0           <- data.frame(S = rep(99, n), I = rep(5, n), R = rep(0, n))
+model        <- mparse(transitions = transitions, compartments = compartments,
+                gdata = c(b = 0.16, g = 0.077), u0 = u0, tspan = 1:180)
+
+## Figure 6: Run the model and plot the resulting trajectory.
+set.seed(123)
+result <- run(model = model, threads = 1)
+plot(result)
+```
+
+
+
+
+
 
 
 
 ```{r}
 
+escorts_edges$nodes        <- escorts_edges$`# source`
+
+
+escorts_edges_2  <- escorts_edges %>%
+  select(-`# source`)
+
+graph_edge_2              <- graph_from_data_frame(escorts_edges_2, directed=F)
+
+
+subgraph                   <- induced.subgraph(graph_edge_2, 1:200)
+
+#Choose the node to be activated initially
+start_run <- data.frame(
+  node=c(4,12),
+  activation=c(20,500))
+
+
+result   <- spreadr(subgraph, start_run, include_t0=TRUE)
+
+
+
+```
+
+```{r}
+
+
+# Create a graph object from the edge list data
+
+graph_edge                 <- graph_from_data_frame(escorts_edges, directed=F)
+
+
+V(graph_edge)$type         <- bipartite.mapping(graph_edge)$type  
+
+plot(graph_edge, layout=layout_nicely, vertex.size = 5, edge.arrow.size=.5,  vertex.label=NA, vertex.color="darkred", edge.color="black", edge.width=0.8) 
+
+
+V(graph_edge)$`# source`   <- escorts_nodes$`# index` 
+V(graph_edge)$type         <- escorts_nodes$male
+
+
+subgraph                   <- induced.subgraph(graph_edge, 1:50)
+
+plot(subgraph, layout = layout_nicely, vertex.size = 5, edge.arrow.size=.5,  vertex.label=NA, vertex.color="darkred", edge.color="black", frame=T, edge.width=0.8) 
+title("XX",cex.main=1.25,col.main="black")
+
+
+
+
+
+bip.net<- bip_init_network(as.matrix(subgraph))
+
+bip_ggnet(bip.net, as.matrix(subgraph))
 
 
 
